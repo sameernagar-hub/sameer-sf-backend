@@ -108,10 +108,29 @@ also read):
 
 ```
 first_name, last_name, email, phone, company, job_title,
-address, city, state, postal_code, country, notes
+address, city, state, postal_code, country, photo, notes
 ```
 
 Responses add `id`, `full_name`, `created_at`, and `updated_at` (UTC).
+
+### Contact photos
+
+`photo` holds a profile picture as a base64 `data:` URL — there is no object
+store to point at, and the default database is in-memory, so the image travels
+with the contact:
+
+```json
+{ "photo": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg..." }
+```
+
+Uploads are validated on the way in and rejected with `422` unless they are
+PNG, JPEG, GIF, or WebP, decode as base64, come in under 2 MB, and carry the
+magic bytes matching the declared type. SVG is deliberately not accepted: it
+can carry script. A contact with `photo: null` has no picture, and clients are
+expected to fall back to the contact's initials.
+
+Note that `PUT` replaces the whole contact, so a body without `photo` clears an
+existing picture. Use `PATCH` to change other fields while keeping the photo.
 
 ### List query parameters
 

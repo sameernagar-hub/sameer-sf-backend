@@ -144,3 +144,70 @@ def test_delete_contact(client, payload):
 def test_root_lists_entrypoints(client):
     body = client.get("/").json()
     assert body["contacts"] == BASE
+
+
+def test_contact_has_no_photo_by_default(client, payload):
+    body = client.post(BASE, json=payload).json()
+    assert body["photo"] is None
+
+
+def test_create_contact_with_photo(client, payload, photo):
+    response = client.post(BASE, json={**payload, "photo": photo})
+    assert response.status_code == 201
+    assert response.json()["photo"] == photo
+
+    contact_id = response.json()["id"]
+    assert client.get(f"{BASE}/{contact_id}").json()["photo"] == photo
+
+
+def test_photo_must_be_a_data_url(client, payload):
+    response = client.post(BASE, json={**payload, "photo": "https://example.com/ada.png"})
+    assert response.status_code == 422
+
+
+def test_photo_rejects_svg(client, payload):
+    # SVG can carry script, so it is not in the allow-list even though browsers render it.
+    svg = "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="
+    assert client.post(BASE, json={**payload, "photo": svg}).status_code == 422
+
+
+def test_photo_rejects_contents_that_are_not_an_image(client, payload):
+    # Correctly formed base64 claiming to be a PNG, but the bytes are text.
+    disguised = "data:image/png;base64,bm90IGFuIGltYWdl"
+    assert client.post(BASE, json={**payload, "photo": disguised}).status_code == 422
+
+
+def test_photo_rejects_oversized_image(client, payload):
+    from app.photo import MAX_PHOTO_BYTES
+
+    oversized = "data:image/png;base64," + "A" * ((MAX_PHOTO_BYTES + 2) // 3 * 4 + 4)
+    assert client.post(BASE, json={**payload, "photo": oversized}).status_code == 422
+
+
+def test_patch_preserves_photo(client, payload, photo):
+    contact_id = client.post(BASE, json={**payload, "photo": photo}).json()["id"]
+
+    response = client.patch(f"{BASE}/{contact_id}", json={"phone": "+1-415-555-0199"})
+    assert response.status_code == 200
+    assert response.json()["photo"] == photo
+
+
+def test_patch_can_clear_photo(client, payload, photo):
+    contact_id = client.post(BASE, json={**payload, "photo": photo}).json()["id"]
+
+    response = client.patch(f"{BASE}/{contact_id}", json={"photo": None})
+    assert response.status_code == 200
+    assert response.json()["photo"] is None
+
+
+def test_put_replaces_photo(client, payload, photo):
+    contact_id = client.post(BASE, json=payload).json()["id"]
+
+    added = client.put(f"{BASE}/{contact_id}", json={**payload, "photo": photo})
+    assert added.status_code == 200
+    assert added.json()["photo"] == photo
+
+    # PUT is a full replace: omitting the photo clears it, same as every other
+    # optional field. Clients that only want to change one field should PATCH.
+    cleared = client.put(f"{BASE}/{contact_id}", json=payload)
+    assert cleared.json()["photo"] is None

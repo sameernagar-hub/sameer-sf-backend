@@ -20,6 +20,19 @@ def client() -> Iterator[TestClient]:
         yield test_client
 
 
+# Smallest valid PNG: a 1x1 transparent pixel. Real bytes, so it survives the
+# magic-number check in app.photo.
+PNG_DATA_URL = (
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+    "AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
+
+@pytest.fixture
+def photo() -> str:
+    return PNG_DATA_URL
+
+
 @pytest.fixture
 def payload() -> dict:
     return {
