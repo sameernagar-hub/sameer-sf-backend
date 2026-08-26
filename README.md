@@ -132,6 +132,19 @@ expected to fall back to the contact's initials.
 Note that `PUT` replaces the whole contact, so a body without `photo` clears an
 existing picture. Use `PATCH` to change other fields while keeping the photo.
 
+#### Upgrading an existing database
+
+Startup calls `create_all()`, which creates missing tables but does not add
+columns to tables that already exist. The default in-memory database is built
+fresh on every boot, so there is nothing to do there. If you have pointed
+`CONTACTS_DATABASE_URL` at a file or at Postgres and are upgrading a database
+created before this field existed, add the column once — it is nullable, so
+that is the entire migration:
+
+```sql
+ALTER TABLE contacts ADD COLUMN photo TEXT;
+```
+
 ### List query parameters
 
 | Param | Default | Notes |
