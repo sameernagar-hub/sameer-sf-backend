@@ -2,14 +2,14 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
 
-from app.photo import ALLOWED_MEDIA_TYPES, MAX_PHOTO_BYTES, validate_photo
+from app.photo import ALLOWED_MEDIA_TYPES, MAX_PHOTO_LABEL, validate_photo
 
 _PHOTO_DESCRIPTION = (
     "Profile photo as a base64 `data:` URL, for example "
     "`data:image/png;base64,iVBORw0KGgo...`. Accepts "
     f"{', '.join(t.removeprefix('image/').upper() for t in ALLOWED_MEDIA_TYPES)} "
-    f"up to {MAX_PHOTO_BYTES // 1024 // 1024} MB. Leave it `null` and clients "
-    "fall back to the contact's initials."
+    f"up to {MAX_PHOTO_LABEL} — downscale to an avatar before uploading. Leave "
+    "it `null` and clients fall back to the contact's initials."
 )
 _PHOTO_EXAMPLE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 

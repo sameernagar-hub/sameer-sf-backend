@@ -124,10 +124,15 @@ with the contact:
 ```
 
 Uploads are validated on the way in and rejected with `422` unless they are
-PNG, JPEG, GIF, or WebP, decode as base64, come in under 2 MB, and carry the
+PNG, JPEG, GIF, or WebP, decode as base64, come in under 512 KB, and carry the
 magic bytes matching the declared type. SVG is deliberately not accepted: it
 can carry script. A contact with `photo: null` has no picture, and clients are
 expected to fall back to the contact's initials.
+
+The 512 KB cap is what bounds a list response, since `photo` is embedded in
+every contact returned — a full 200-contact page is roughly 140 MB of base64 at
+the cap, and nearer 8 MB for real avatars. This is an avatar field, so clients
+should downscale before uploading rather than send a camera original.
 
 Note that `PUT` replaces the whole contact, so a body without `photo` clears an
 existing picture. Use `PATCH` to change other fields while keeping the photo.

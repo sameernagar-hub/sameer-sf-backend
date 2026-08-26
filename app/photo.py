@@ -13,8 +13,20 @@ import base64
 import binascii
 import re
 
-MAX_PHOTO_BYTES = 2 * 1024 * 1024
-"""Largest decoded image accepted (2 MB)."""
+MAX_PHOTO_BYTES = 512 * 1024
+"""
+Largest decoded image accepted.
+
+This is an avatar, not a photo library. The field is embedded in every contact
+the API returns, including each item of a 200-contact list page, so the cap is
+what bounds a list response: 200 contacts at this size is roughly 140 MB of
+base64 in the worst case, against 530 MB at 2 MB apiece. Clients are expected
+to downscale before uploading — the reference frontend renders the picked file
+to a 512px square — so a real avatar lands near 40 KB and a full page near
+8 MB.
+"""
+
+MAX_PHOTO_LABEL = f"{MAX_PHOTO_BYTES // 1024} KB"
 
 ALLOWED_MEDIA_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp")
 """Raster formats every browser renders. SVG is excluded: it can carry script."""
@@ -23,7 +35,7 @@ ALLOWED_MEDIA_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp")
 # encoded length alone — before spending memory decoding it.
 _MAX_ENCODED_LENGTH = (MAX_PHOTO_BYTES + 2) // 3 * 4
 
-_TOO_LARGE = f"photo exceeds the maximum size of {MAX_PHOTO_BYTES // 1024 // 1024} MB"
+_TOO_LARGE = f"photo exceeds the maximum size of {MAX_PHOTO_LABEL}"
 
 _DATA_URL = re.compile(r"data:(?P<media_type>[\w.+-]+/[\w.+-]+);base64,(?P<payload>[A-Za-z0-9+/]+={0,2})")
 
