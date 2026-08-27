@@ -87,6 +87,15 @@ def test_patch_with_empty_addresses_clears_collection(client, payload, address):
     assert response.json()["addresses"] == []
 
 
+def test_address_only_patch_advances_contact_updated_at(client, payload, address):
+    created = client.post(BASE, json={**payload, "addresses": [address]}).json()
+
+    response = client.patch(f"{BASE}/{created['id']}", json={"addresses": [_work_address()]})
+
+    assert response.status_code == 200
+    assert response.json()["updated_at"] != created["updated_at"]
+
+
 def test_delete_contact_cascades_to_addresses(client, payload, address):
     contact_id = client.post(BASE, json={**payload, "addresses": [address, _work_address()]}).json()["id"]
 

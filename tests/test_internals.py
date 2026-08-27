@@ -1,6 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.pool import StaticPool
 
 from app import crud, database, main, photo as photo_module
@@ -46,6 +47,39 @@ def test_crud_falls_back_to_id_for_invalid_sort(client, payload):
 
     assert total == 1
     assert items[0].id == 1
+
+
+def test_address_replacement_locks_parent_on_transactional_databases():
+    class Result:
+        def scalar_one(self):
+            return None
+
+    class FakeDb:
+        bind = SimpleNamespace(dialect=postgresql.dialect())
+
+        def __init__(self):
+            self.executions = []
+
+        def execute(self, statement, **kwargs):
+            self.executions.append((statement, kwargs))
+            return Result()
+
+        def flush(self):
+            self.flushed = True
+
+        def expire(self, contact, fields):
+            self.expired = (contact, fields)
+
+    contact = Contact(id=7, first_name="Ada", last_name="Lovelace", email="ada@example.com")
+    fake_db = FakeDb()
+
+    crud._replace_addresses(fake_db, contact, [])
+
+    assert len(fake_db.executions) == 2
+    assert "FOR UPDATE" in str(fake_db.executions[0][0].compile(dialect=fake_db.bind.dialect))
+    assert fake_db.flushed is True
+    assert fake_db.expired == (contact, ["addresses"])
+    assert contact.updated_at is not None
 
 
 def test_photo_accepts_supported_raster_signatures():

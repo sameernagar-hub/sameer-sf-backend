@@ -2,6 +2,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Address, Contact
+from app.models import _utcnow
 from app.schemas import AddressCreate, ContactCreate, ContactReplace, ContactUpdate
 
 SORTABLE_FIELDS = ("id", "first_name", "last_name", "email", "company", "created_at", "updated_at")
@@ -34,6 +35,8 @@ def _sync_addresses(contact: Contact, rows: list[AddressCreate]) -> None:
 
 def _replace_addresses(db: Session, contact: Contact, rows: list[AddressCreate]) -> None:
     """Delete existing address rows before inserting replacements in the same transaction."""
+    if db.bind is not None and db.bind.dialect.name != "sqlite":
+        db.execute(select(Contact).where(Contact.id == contact.id).with_for_update()).scalar_one()
     db.execute(
         delete(Address).where(Address.contact_id == contact.id),
         execution_options={"synchronize_session": False},
@@ -41,6 +44,7 @@ def _replace_addresses(db: Session, contact: Contact, rows: list[AddressCreate])
     db.flush()
     db.expire(contact, ["addresses"])
     _sync_addresses(contact, rows)
+    contact.updated_at = _utcnow()
 
 
 def list_contacts(
