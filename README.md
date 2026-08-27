@@ -50,7 +50,7 @@ through the UI lives only until the process exits.
 
 Both UIs list every model under **Schemas** (ReDoc) or **Schemas** at the bottom of the
 page (Swagger UI). `ContactCreate`, `ContactReplace` (PUT), `ContactUpdate` (PATCH),
-`ContactRead`, and `ContactPage` show exactly which fields are required, which are
+`AddressRead`, `ContactRead`, and `ContactPage` show exactly which fields are required, which are
 nullable, and the validation rules — the same constraints described in
 [Contact fields](#contact-fields) below. Endpoints are grouped
 by the tags declared in `app/main.py`, and each documents its error responses (`404`,
@@ -108,10 +108,40 @@ also read):
 
 ```
 first_name, last_name, email, phone, company, job_title,
-address, city, state, postal_code, country, photo, notes
+addresses, photo, notes
 ```
 
 Responses add `id`, `full_name`, `created_at`, and `updated_at` (UTC).
+
+### Contact addresses
+
+Contacts now hold many addresses through an `addresses` array. Each address is a
+real child row with its own `id`, a `type` of `Home`, `Work`, or `Other`, optional
+street/city/state/postal/country fields, and an `is_primary` flag:
+
+```json
+{
+  "addresses": [
+    {
+      "type": "Home",
+      "street": "1 Market St, Suite 400",
+      "city": "San Francisco",
+      "state": "CA",
+      "postal_code": "94105",
+      "country": "USA",
+      "is_primary": true
+    }
+  ]
+}
+```
+
+At most one address may be primary. The API enforces that in request validation
+and with a database index, so the invariant survives future write paths too.
+Address lists are capped at 20 rows per contact to keep payloads bounded.
+
+`PUT` is a full replacement: omitting `addresses` clears the collection, and
+sending an array replaces every existing row. `PATCH` keeps addresses unchanged
+unless the request includes `addresses`; send `addresses: []` to clear them.
 
 ### Contact photos
 
@@ -149,6 +179,18 @@ same schema change:
 ```sql
 ALTER TABLE contacts ADD COLUMN photo TEXT;
 ```
+
+### Upgrading addresses in an existing database
+
+Version `0.2.0` replaces the flat `address`, `city`, `state`, `postal_code`, and
+`country` contact columns with the `addresses` child table. The default in-memory
+database is recreated on every boot, so no manual migration is needed there.
+
+If you point `CONTACTS_DATABASE_URL` at a file or Postgres database, create the
+new table and copy any existing flat address data before dropping the old
+columns. SQLite does not support every `ALTER TABLE ... DROP COLUMN` flow across
+versions, so make a backup first and use your normal migration tooling for
+persisted data.
 
 ### List query parameters
 
@@ -207,9 +249,9 @@ app/
   main.py             FastAPI app, lifespan startup, /health and /
   config.py           Environment-driven settings
   database.py         Engine, session factory, StaticPool in-memory wiring
-  models.py           Contact ORM model
+  models.py           Contact and Address ORM models
   schemas.py          Pydantic request/response models
-  crud.py             Database operations (search, sort, paginate)
+  crud.py             Database operations (search, sort, paginate, address sync)
   seed.py             Sample contacts for the in-memory default
   routers/contacts.py REST endpoints
 tests/                API tests via FastAPI TestClient

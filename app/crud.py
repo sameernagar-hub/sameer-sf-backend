@@ -1,8 +1,8 @@
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Contact
-from app.schemas import ContactCreate, ContactReplace, ContactUpdate
+from app.models import Address, Contact
+from app.schemas import AddressCreate, ContactCreate, ContactReplace, ContactUpdate
 
 SORTABLE_FIELDS = ("id", "first_name", "last_name", "email", "company", "created_at", "updated_at")
 
@@ -22,6 +22,25 @@ def get_contact_by_email(db: Session, email: str) -> Contact | None:
 
 def count_contacts(db: Session) -> int:
     return db.execute(select(func.count()).select_from(Contact)).scalar_one()
+
+
+def _sync_addresses(contact: Contact, rows: list[AddressCreate]) -> None:
+    """Replace a contact's addresses while preserving submitted order."""
+    contact.addresses = [
+        Address(**row.model_dump(), position=index)
+        for index, row in enumerate(rows)
+    ]
+
+
+def _replace_addresses(db: Session, contact: Contact, rows: list[AddressCreate]) -> None:
+    """Delete existing address rows before inserting replacements in the same transaction."""
+    db.execute(
+        delete(Address).where(Address.contact_id == contact.id),
+        execution_options={"synchronize_session": False},
+    )
+    db.flush()
+    db.expire(contact, ["addresses"])
+    _sync_addresses(contact, rows)
 
 
 def list_contacts(
@@ -60,9 +79,10 @@ def list_contacts(
 
 
 def create_contact(db: Session, payload: ContactCreate) -> Contact:
-    data = payload.model_dump()
+    data = payload.model_dump(exclude={"addresses"})
     data["email"] = _normalize_email(data["email"])
     contact = Contact(**data)
+    _sync_addresses(contact, payload.addresses)
     db.add(contact)
     db.commit()
     db.refresh(contact)
@@ -70,16 +90,20 @@ def create_contact(db: Session, payload: ContactCreate) -> Contact:
 
 
 def replace_contact(db: Session, contact: Contact, payload: ContactReplace) -> Contact:
-    for field, value in payload.model_dump().items():
+    for field, value in payload.model_dump(exclude={"addresses"}).items():
         setattr(contact, field, _normalize_email(value) if field == "email" else value)
+    _replace_addresses(db, contact, payload.addresses)
     db.commit()
     db.refresh(contact)
     return contact
 
 
 def update_contact(db: Session, contact: Contact, payload: ContactUpdate) -> Contact:
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    should_sync_addresses = "addresses" in payload.model_fields_set
+    for field, value in payload.model_dump(exclude_unset=True, exclude={"addresses"}).items():
         setattr(contact, field, _normalize_email(value) if field == "email" else value)
+    if should_sync_addresses:
+        _replace_addresses(db, contact, payload.addresses or [])
     db.commit()
     db.refresh(contact)
     return contact

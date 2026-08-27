@@ -25,3 +25,11 @@ def test_startup_upgrade_adds_photo_to_legacy_sqlite_database(tmp_path):
 
     columns = {column["name"] for column in inspect(engine).get_columns("contacts")}
     assert "photo" in columns
+
+
+def test_startup_upgrade_is_noop_before_contacts_table_exists(tmp_path):
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'empty.db'}")
+
+    _ensure_contact_photo_column(engine)
+
+    assert "contacts" not in inspect(engine).get_table_names()
