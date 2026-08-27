@@ -34,6 +34,19 @@ def photo() -> str:
 
 
 @pytest.fixture
+def address() -> dict:
+    return {
+        "type": "Home",
+        "street": "1 Market St, Suite 400",
+        "city": "San Francisco",
+        "state": "CA",
+        "postal_code": "94105",
+        "country": "USA",
+        "is_primary": True,
+    }
+
+
+@pytest.fixture
 def payload() -> dict:
     return {
         "first_name": "Ada",
@@ -42,9 +55,16 @@ def payload() -> dict:
         "phone": "+1-415-555-0101",
         "company": "Analytical Engines",
         "job_title": "Mathematician",
-        "city": "San Francisco",
-        "state": "CA",
-        "postal_code": "94105",
-        "country": "USA",
+        "addresses": [
+            {
+                "type": "Home",
+                "street": "1 Market St, Suite 400",
+                "city": "San Francisco",
+                "state": "CA",
+                "postal_code": "94105",
+                "country": "USA",
+                "is_primary": True,
+            }
+        ],
         "notes": "First programmer.",
     }

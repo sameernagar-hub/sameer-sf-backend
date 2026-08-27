@@ -51,6 +51,7 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     _ensure_contact_photo_column(engine)
+    _backfill_legacy_addresses(engine)
 
 
 def _ensure_contact_photo_column(target_engine) -> None:
@@ -70,6 +71,45 @@ def _ensure_contact_photo_column(target_engine) -> None:
 
     with target_engine.begin() as connection:
         connection.execute(text("ALTER TABLE contacts ADD COLUMN photo TEXT"))
+
+
+def _backfill_legacy_addresses(target_engine) -> None:
+    """
+    Copy pre-0.2 flat address columns into the normalized address table once.
+
+    Older persisted databases may still have `address`, `city`, `state`,
+    `postal_code`, and `country` on `contacts`. Current API responses read only
+    from `addresses`, so startup preserves non-empty legacy values as one
+    primary Home address unless the contact already has child address rows.
+    """
+    inspector = inspect(target_engine)
+    table_names = inspector.get_table_names()
+    if "contacts" not in table_names or "addresses" not in table_names:
+        return
+
+    contact_columns = {column["name"] for column in inspector.get_columns("contacts")}
+    legacy_columns = ("address", "city", "state", "postal_code", "country")
+    if not set(legacy_columns).issubset(contact_columns):
+        return
+
+    nonblank_checks = " OR ".join(f"NULLIF(TRIM({column}), '') IS NOT NULL" for column in legacy_columns)
+    with target_engine.begin() as connection:
+        connection.execute(
+            text(
+                f"""
+                INSERT INTO addresses (
+                    contact_id, type, street, city, state, postal_code, country, is_primary, position
+                )
+                SELECT id, :address_type, address, city, state, postal_code, country, :is_primary, 0
+                FROM contacts
+                WHERE ({nonblank_checks})
+                  AND NOT EXISTS (
+                      SELECT 1 FROM addresses WHERE addresses.contact_id = contacts.id
+                  )
+                """
+            ),
+            {"address_type": "HOME", "is_primary": True},
+        )
 
 
 def get_db() -> Generator[Session, None, None]:

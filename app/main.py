@@ -135,7 +135,7 @@ def root() -> RootResponse:
     )
 
 
-def run() -> None:
+def run() -> None:  # pragma: no cover - starts a blocking development server
     """Entry point for `contacts-api` / `python -m app.main`."""
     import uvicorn
 
@@ -143,5 +143,5 @@ def run() -> None:
     uvicorn.run(app, host=settings.host, port=settings.port)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - module execution guard
     run()

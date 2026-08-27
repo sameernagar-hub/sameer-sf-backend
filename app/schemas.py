@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator, model_validator
 
+from app.models import AddressType
 from app.photo import ALLOWED_MEDIA_TYPES, MAX_PHOTO_LABEL, validate_photo
 
 _PHOTO_DESCRIPTION = (
@@ -12,6 +13,49 @@ _PHOTO_DESCRIPTION = (
     "it `null` and clients fall back to the contact's initials."
 )
 _PHOTO_EXAMPLE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+
+
+class AddressBase(BaseModel):
+    """Fields shared by address request and response payloads."""
+
+    type: AddressType = Field(
+        default=AddressType.HOME,
+        description="Address label. Use Home, Work, or Other.",
+        examples=[AddressType.HOME.value],
+    )
+    street: str | None = Field(
+        default=None,
+        max_length=300,
+        description="Street address, including unit or suite.",
+        examples=["1 Market St, Suite 400"],
+    )
+    city: str | None = Field(default=None, max_length=120, description="City or locality.", examples=["San Francisco"])
+    state: str | None = Field(
+        default=None,
+        max_length=120,
+        description="State, province, or region.",
+        examples=["CA"],
+    )
+    postal_code: str | None = Field(
+        default=None,
+        max_length=20,
+        description="Postal or ZIP code.",
+        examples=["94105"],
+    )
+    country: str | None = Field(default=None, max_length=120, description="Country name.", examples=["USA"])
+    is_primary: bool = Field(default=False, description="Marks the preferred address for the contact.", examples=[True])
+
+
+class AddressCreate(AddressBase):
+    """Address shape accepted inside contact write payloads."""
+
+
+class AddressRead(AddressBase):
+    """A stored address returned with its parent contact."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description="Server-assigned address identifier.", examples=[1])
 
 
 class ContactBase(BaseModel):
@@ -55,26 +99,6 @@ class ContactBase(BaseModel):
         description="Role held at the company.",
         examples=["Mathematician"],
     )
-    address: str | None = Field(
-        default=None,
-        max_length=300,
-        description="Street address, including unit or suite.",
-        examples=["1 Market St, Suite 400"],
-    )
-    city: str | None = Field(default=None, max_length=120, description="City or locality.", examples=["San Francisco"])
-    state: str | None = Field(
-        default=None,
-        max_length=120,
-        description="State, province, or region.",
-        examples=["CA"],
-    )
-    postal_code: str | None = Field(
-        default=None,
-        max_length=20,
-        description="Postal or ZIP code.",
-        examples=["94105"],
-    )
-    country: str | None = Field(default=None, max_length=120, description="Country name.", examples=["USA"])
     photo: str | None = Field(default=None, description=_PHOTO_DESCRIPTION, examples=[_PHOTO_EXAMPLE])
     notes: str | None = Field(
         default=None,
@@ -90,11 +114,26 @@ _FULL_EXAMPLE = {
     "phone": "+1-415-555-0101",
     "company": "Analytical Engines",
     "job_title": "Mathematician",
-    "address": "1 Market St, Suite 400",
-    "city": "San Francisco",
-    "state": "CA",
-    "postal_code": "94105",
-    "country": "USA",
+    "addresses": [
+        {
+            "type": "Home",
+            "street": "1 Market St, Suite 400",
+            "city": "San Francisco",
+            "state": "CA",
+            "postal_code": "94105",
+            "country": "USA",
+            "is_primary": True,
+        },
+        {
+            "type": "Work",
+            "street": "1355 Market St",
+            "city": "San Francisco",
+            "state": "CA",
+            "postal_code": "94103",
+            "country": "USA",
+            "is_primary": False,
+        },
+    ],
     "notes": "Met at the SF hackathon.",
 }
 _MINIMAL_EXAMPLE = {"first_name": "Grace", "last_name": "Hopper", "email": "grace@example.com"}
@@ -109,10 +148,22 @@ class ContactWrite(ContactBase):
     would otherwise re-decode every image on every response.
     """
 
+    addresses: list[AddressCreate] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Addresses for this contact, preserved in submitted order.",
+    )
+
     @field_validator("photo")
     @classmethod
     def _check_photo(cls, value: str | None) -> str | None:
         return None if value is None else validate_photo(value)
+
+    @model_validator(mode="after")
+    def _check_primary_address(self):
+        if sum(1 for address in self.addresses if address.is_primary) > 1:
+            raise ValueError("at most one address may be marked primary")
+        return self
 
 
 class ContactCreate(ContactWrite):
@@ -138,7 +189,9 @@ class ContactUpdate(BaseModel):
 
     Every field is optional. Only the fields actually present in the request are
     written; omitted fields keep their current value. Sending an explicit `null`
-    clears that field.
+    clears that scalar field. For the address collection, omitting `addresses`
+    leaves existing rows untouched, while sending `addresses` replaces the whole
+    collection; `addresses: []` clears every address.
     """
 
     model_config = ConfigDict(
@@ -155,11 +208,11 @@ class ContactUpdate(BaseModel):
     phone: str | None = Field(default=None, max_length=40, description="New phone number.")
     company: str | None = Field(default=None, max_length=200, description="New company.")
     job_title: str | None = Field(default=None, max_length=200, description="New job title.")
-    address: str | None = Field(default=None, max_length=300, description="New street address.")
-    city: str | None = Field(default=None, max_length=120, description="New city.")
-    state: str | None = Field(default=None, max_length=120, description="New state or region.")
-    postal_code: str | None = Field(default=None, max_length=20, description="New postal code.")
-    country: str | None = Field(default=None, max_length=120, description="New country.")
+    addresses: list[AddressCreate] | None = Field(
+        default=None,
+        max_length=20,
+        description="Replacement address collection. Omit to keep current addresses; send [] to clear them.",
+    )
     photo: str | None = Field(default=None, description=_PHOTO_DESCRIPTION, examples=[_PHOTO_EXAMPLE])
     notes: str | None = Field(default=None, description="New notes; replaces the existing text.")
 
@@ -167,6 +220,12 @@ class ContactUpdate(BaseModel):
     @classmethod
     def _check_photo(cls, value: str | None) -> str | None:
         return None if value is None else validate_photo(value)
+
+    @model_validator(mode="after")
+    def _check_primary_address(self):
+        if self.addresses is not None and sum(1 for address in self.addresses if address.is_primary) > 1:
+            raise ValueError("at most one address may be marked primary")
+        return self
 
 
 class ContactRead(ContactBase):
@@ -188,6 +247,10 @@ class ContactRead(ContactBase):
     )
 
     id: int = Field(description="Server-assigned identifier.", examples=[1])
+    addresses: list[AddressRead] = Field(
+        default_factory=list,
+        description="Addresses stored for this contact, in user-submitted order.",
+    )
     created_at: datetime = Field(
         description="UTC timestamp of when the contact was created.",
         examples=["2026-08-19T16:22:58.189507Z"],
@@ -234,7 +297,7 @@ class RootResponse(BaseModel):
     """Discovery document listing the API's entry points."""
 
     name: str = Field(description="Human-readable service name.", examples=["Contacts API"])
-    version: str = Field(description="Service version.", examples=["0.1.0"])
+    version: str = Field(description="Service version.", examples=["0.2.0"])
     docs: str = Field(description="Path to the Swagger UI.", examples=["/docs"])
     redoc: str = Field(description="Path to the ReDoc UI.", examples=["/redoc"])
     openapi: str = Field(description="Path to the OpenAPI 3.1 document.", examples=["/openapi.json"])
