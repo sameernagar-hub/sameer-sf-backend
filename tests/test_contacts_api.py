@@ -177,6 +177,11 @@ def test_photo_rejects_contents_that_are_not_an_image(client, payload):
     assert client.post(BASE, json={**payload, "photo": disguised}).status_code == 422
 
 
+def test_photo_rejects_signature_only_png(client, payload):
+    truncated = "data:image/png;base64,iVBORw0KGgo="
+    assert client.post(BASE, json={**payload, "photo": truncated}).status_code == 422
+
+
 def test_photo_rejects_oversized_image(client, payload):
     from app.photo import MAX_PHOTO_BYTES
 

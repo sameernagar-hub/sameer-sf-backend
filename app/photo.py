@@ -6,20 +6,20 @@ travels with its contact as a base64 `data:` URL rather than as a file
 reference. That makes the field user-supplied bytes on a hot path, so it is
 checked on the way in: the declared media type must be one we allow, the
 payload must decode as base64, the image must be small enough to keep responses
-sane, and the decoded bytes must actually start with that format's signature.
+sane, and the decoded bytes must carry the basic structure for that format.
 """
 
 import base64
 import binascii
 import re
 
-MAX_PHOTO_BYTES = 512 * 1024
+MAX_PHOTO_BYTES = 128 * 1024
 """
 Largest decoded image accepted.
 
 This is an avatar, not a photo library. The field is embedded in every contact
 the API returns, including each item of a 200-contact list page, so the cap is
-what bounds a list response: 200 contacts at this size is roughly 140 MB of
+what bounds a list response: 200 contacts at this size is roughly 35 MB of
 base64 in the worst case, against 530 MB at 2 MB apiece. Clients are expected
 to downscale before uploading — the reference frontend renders the picked file
 to a 512px square — so a real avatar lands near 40 KB and a full page near
@@ -53,6 +53,25 @@ def _sniff_media_type(data: bytes) -> str | None:
     return None
 
 
+def _has_valid_image_structure(data: bytes, media_type: str) -> bool:
+    """Reject signature-only payloads without pulling in heavyweight image deps."""
+    if media_type == "image/png":
+        return (
+            len(data) >= 33
+            and data.startswith(b"\x89PNG\r\n\x1a\n")
+            and data[12:16] == b"IHDR"
+            and data.endswith(b"IEND\xaeB`\x82")
+        )
+    if media_type == "image/jpeg":
+        return len(data) > 4 and data.startswith(b"\xff\xd8\xff") and data.endswith(b"\xff\xd9")
+    if media_type == "image/gif":
+        return len(data) >= 14 and data.startswith((b"GIF87a", b"GIF89a")) and data.endswith(b";")
+    if media_type == "image/webp":
+        riff_size = int.from_bytes(data[4:8], "little") + 8 if len(data) >= 12 else 0
+        return len(data) >= 16 and data[:4] == b"RIFF" and data[8:12] == b"WEBP" and riff_size <= len(data)
+    return False
+
+
 def validate_photo(value: str) -> str:
     """
     Return `value` unchanged if it is an acceptable photo, else raise `ValueError`.
@@ -80,7 +99,7 @@ def validate_photo(value: str) -> str:
     if len(decoded) > MAX_PHOTO_BYTES:
         raise ValueError(_TOO_LARGE)
 
-    if _sniff_media_type(decoded) != media_type:
+    if _sniff_media_type(decoded) != media_type or not _has_valid_image_structure(decoded, media_type):
         raise ValueError(f"photo contents are not a valid {media_type} image")
 
     return value

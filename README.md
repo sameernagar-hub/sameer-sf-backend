@@ -124,13 +124,13 @@ with the contact:
 ```
 
 Uploads are validated on the way in and rejected with `422` unless they are
-PNG, JPEG, GIF, or WebP, decode as base64, come in under 512 KB, and carry the
-magic bytes matching the declared type. SVG is deliberately not accepted: it
-can carry script. A contact with `photo: null` has no picture, and clients are
-expected to fall back to the contact's initials.
+PNG, JPEG, GIF, or WebP, decode as base64, come in under 128 KB, and carry the
+basic file structure matching the declared type. SVG is deliberately not
+accepted: it can carry script. A contact with `photo: null` has no picture, and
+clients are expected to fall back to the contact's initials.
 
-The 512 KB cap is what bounds a list response, since `photo` is embedded in
-every contact returned — a full 200-contact page is roughly 140 MB of base64 at
+The 128 KB cap is what bounds a list response, since `photo` is embedded in
+every contact returned — a full 200-contact page is roughly 35 MB of base64 at
 the cap, and nearer 8 MB for real avatars. This is an avatar field, so clients
 should downscale before uploading rather than send a camera original.
 
@@ -140,11 +140,11 @@ existing picture. Use `PATCH` to change other fields while keeping the photo.
 #### Upgrading an existing database
 
 Startup calls `create_all()`, which creates missing tables but does not add
-columns to tables that already exist. The default in-memory database is built
-fresh on every boot, so there is nothing to do there. If you have pointed
-`CONTACTS_DATABASE_URL` at a file or at Postgres and are upgrading a database
-created before this field existed, add the column once — it is nullable, so
-that is the entire migration:
+columns to tables that already exist. The app also checks for the nullable
+`photo` column on startup and adds it when a pre-photo `contacts` table is
+found, so persisted SQLite and Postgres databases keep working after the
+upgrade. If you prefer to run the migration manually before boot, this is the
+same schema change:
 
 ```sql
 ALTER TABLE contacts ADD COLUMN photo TEXT;
