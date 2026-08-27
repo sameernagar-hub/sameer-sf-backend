@@ -100,14 +100,15 @@ def _backfill_legacy_addresses(target_engine) -> None:
                 INSERT INTO addresses (
                     contact_id, type, street, city, state, postal_code, country, is_primary, position
                 )
-                SELECT id, 'Home', address, city, state, postal_code, country, 1, 0
+                SELECT id, :address_type, address, city, state, postal_code, country, :is_primary, 0
                 FROM contacts
                 WHERE ({nonblank_checks})
                   AND NOT EXISTS (
                       SELECT 1 FROM addresses WHERE addresses.contact_id = contacts.id
                   )
                 """
-            )
+            ),
+            {"address_type": "HOME", "is_primary": True},
         )
 
 
