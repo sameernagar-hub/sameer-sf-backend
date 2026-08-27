@@ -2,6 +2,17 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
 
+from app.photo import ALLOWED_MEDIA_TYPES, MAX_PHOTO_LABEL, validate_photo
+
+_PHOTO_DESCRIPTION = (
+    "Profile photo as a base64 `data:` URL, for example "
+    "`data:image/png;base64,iVBORw0KGgo...`. Accepts "
+    f"{', '.join(t.removeprefix('image/').upper() for t in ALLOWED_MEDIA_TYPES)} "
+    f"up to {MAX_PHOTO_LABEL} — downscale to an avatar before uploading. Leave "
+    "it `null` and clients fall back to the contact's initials."
+)
+_PHOTO_EXAMPLE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+
 
 class ContactBase(BaseModel):
     """Fields shared by every contact request and response."""
@@ -64,6 +75,7 @@ class ContactBase(BaseModel):
         examples=["94105"],
     )
     country: str | None = Field(default=None, max_length=120, description="Country name.", examples=["USA"])
+    photo: str | None = Field(default=None, description=_PHOTO_DESCRIPTION, examples=[_PHOTO_EXAMPLE])
     notes: str | None = Field(
         default=None,
         description="Free-form notes about the contact. No length limit.",
@@ -88,13 +100,28 @@ _FULL_EXAMPLE = {
 _MINIMAL_EXAMPLE = {"first_name": "Grace", "last_name": "Hopper", "email": "grace@example.com"}
 
 
-class ContactCreate(ContactBase):
+class ContactWrite(ContactBase):
+    """
+    Shared by the request bodies that accept a whole contact.
+
+    Photos arrive as user-supplied bytes, so they are validated here rather than
+    on `ContactBase` — `ContactRead` renders what the database already holds and
+    would otherwise re-decode every image on every response.
+    """
+
+    @field_validator("photo")
+    @classmethod
+    def _check_photo(cls, value: str | None) -> str | None:
+        return None if value is None else validate_photo(value)
+
+
+class ContactCreate(ContactWrite):
     """Body of `POST /api/v1/contacts`. Only the two names and email are required."""
 
     model_config = ConfigDict(json_schema_extra={"examples": [_FULL_EXAMPLE, _MINIMAL_EXAMPLE]})
 
 
-class ContactReplace(ContactBase):
+class ContactReplace(ContactWrite):
     """
     Body of `PUT /api/v1/contacts/{contact_id}`.
 
@@ -133,7 +160,13 @@ class ContactUpdate(BaseModel):
     state: str | None = Field(default=None, max_length=120, description="New state or region.")
     postal_code: str | None = Field(default=None, max_length=20, description="New postal code.")
     country: str | None = Field(default=None, max_length=120, description="New country.")
+    photo: str | None = Field(default=None, description=_PHOTO_DESCRIPTION, examples=[_PHOTO_EXAMPLE])
     notes: str | None = Field(default=None, description="New notes; replaces the existing text.")
+
+    @field_validator("photo")
+    @classmethod
+    def _check_photo(cls, value: str | None) -> str | None:
+        return None if value is None else validate_photo(value)
 
 
 class ContactRead(ContactBase):

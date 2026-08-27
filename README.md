@@ -108,10 +108,47 @@ also read):
 
 ```
 first_name, last_name, email, phone, company, job_title,
-address, city, state, postal_code, country, notes
+address, city, state, postal_code, country, photo, notes
 ```
 
 Responses add `id`, `full_name`, `created_at`, and `updated_at` (UTC).
+
+### Contact photos
+
+`photo` holds a profile picture as a base64 `data:` URL — there is no object
+store to point at, and the default database is in-memory, so the image travels
+with the contact:
+
+```json
+{ "photo": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg..." }
+```
+
+Uploads are validated on the way in and rejected with `422` unless they are
+PNG, JPEG, GIF, or WebP, decode as base64, come in under 128 KB, and carry the
+basic file structure matching the declared type. SVG is deliberately not
+accepted: it can carry script. A contact with `photo: null` has no picture, and
+clients are expected to fall back to the contact's initials.
+
+The 128 KB cap is what bounds a list response, since `photo` is embedded in
+every contact returned — a full 200-contact page is roughly 35 MB of base64 at
+the cap, and nearer 8 MB for real avatars. This is an avatar field, so clients
+should downscale before uploading rather than send a camera original.
+
+Note that `PUT` replaces the whole contact, so a body without `photo` clears an
+existing picture. Use `PATCH` to change other fields while keeping the photo.
+
+#### Upgrading an existing database
+
+Startup calls `create_all()`, which creates missing tables but does not add
+columns to tables that already exist. The app also checks for the nullable
+`photo` column on startup and adds it when a pre-photo `contacts` table is
+found, so persisted SQLite and Postgres databases keep working after the
+upgrade. If you prefer to run the migration manually before boot, this is the
+same schema change:
+
+```sql
+ALTER TABLE contacts ADD COLUMN photo TEXT;
+```
 
 ### List query parameters
 

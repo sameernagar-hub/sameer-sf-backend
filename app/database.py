@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -50,6 +50,26 @@ def init_db() -> None:
     from app import models  # noqa: F401  (register models on Base.metadata)
 
     Base.metadata.create_all(bind=engine)
+    _ensure_contact_photo_column(engine)
+
+
+def _ensure_contact_photo_column(target_engine) -> None:
+    """
+    Upgrade pre-photo persisted databases before the app serves traffic.
+
+    `create_all()` creates missing tables but does not add columns to an
+    existing table. The hackathon default is in-memory and starts fresh, but
+    file SQLite and Postgres URLs are supported too, so this keeps older
+    databases from failing on the mapped `Contact.photo` column.
+    """
+    inspector = inspect(target_engine)
+    if "contacts" not in inspector.get_table_names():
+        return
+    if any(column["name"] == "photo" for column in inspector.get_columns("contacts")):
+        return
+
+    with target_engine.begin() as connection:
+        connection.execute(text("ALTER TABLE contacts ADD COLUMN photo TEXT"))
 
 
 def get_db() -> Generator[Session, None, None]:

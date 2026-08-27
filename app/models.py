@@ -29,6 +29,10 @@ class Contact(Base):
     postal_code: Mapped[str | None] = mapped_column(String(20))
     country: Mapped[str | None] = mapped_column(String(120))
 
+    # Base64 `data:` URL. The default database is in-memory and there is no
+    # object store, so the image rides along with the contact.
+    photo: Mapped[str | None] = mapped_column(Text)
+
     notes: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(
